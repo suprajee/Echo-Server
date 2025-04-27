@@ -9,15 +9,14 @@
 #define BUFFER_SIZE 1024
 #define INPUT_MAX 1024
 
-// Global variables
 char input_buffer[INPUT_MAX];
 int input_pos = 0;
 int PORT=8989;
 pthread_mutex_t screen_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t state_mutex = PTHREAD_MUTEX_INITIALIZER;  // Mutex for state variables
 struct termios orig_term, raw_term;
-char current_mode = 'e';  // 'e' for echo, 'c' for chat
-bool in_chat = false;     // Whether the user is currently in a chat session
+char current_mode = 'e';  // 'e' -> echo, 'c' -> chat
+bool in_chat = false;
 
 // Reset terminal to original state
 void reset_terminal() {
@@ -33,7 +32,7 @@ void set_raw_terminal() {
 
 // Clear current line and reset cursor position
 void clear_current_line() {
-    printf("\r\033[K");  // Carriage return and clear line
+    printf("\r\033[K");
     fflush(stdout);
 }
 
@@ -49,7 +48,7 @@ void display_input_prompt() {
     fflush(stdout);
 }
 
-// Function to receive messages from server
+// Function to receive messages
 void* receive_messages(void* socket_ptr) {
     int sock = *(int*)socket_ptr;
     char buffer[BUFFER_SIZE];
@@ -64,13 +63,10 @@ void* receive_messages(void* socket_ptr) {
             exit(1);
         }
         buffer[bytes] = '\0';
-        
-        // Clean up trailing whitespace
         while (bytes > 0 && (buffer[bytes-1] == '\n' || buffer[bytes-1] == '\r')) {
             buffer[--bytes] = '\0';
         }
         
-        // Check for chat status messages
         pthread_mutex_lock(&state_mutex);
         if (strstr(buffer, "Chat started with") != NULL) {
             in_chat = true;
@@ -88,7 +84,7 @@ void* receive_messages(void* socket_ptr) {
     return NULL;
 }
 
-// Send a message to the server
+// Send a message
 void send_message_to_server(int sock, const char* message) {
     char buffer[BUFFER_SIZE];
     strncpy(buffer, message, BUFFER_SIZE - 2);
@@ -121,7 +117,6 @@ int main(int argc, char* argv[] ) {
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(PORT);
     
-    // TODO: Replace with your server's IP address
     const char* server_ip = argv[1];
     if (inet_pton(AF_INET, server_ip, &server_addr.sin_addr) <= 0) {
         perror("Invalid address/Address not supported");
@@ -139,7 +134,7 @@ int main(int argc, char* argv[] ) {
     while (1) {
         printf("Enter your name: ");
         fgets(name, sizeof(name), stdin);
-        name[strcspn(name, "\n")] = 0; // remove newline
+        name[strcspn(name, "\n")] = 0;
     
         send(sock, name, strlen(name), 0);
     
@@ -157,7 +152,7 @@ int main(int argc, char* argv[] ) {
             continue;
         }
     
-        printf("%s\n", response); // prints welcome message
+        printf("%s\n", response);
         break;
     }
     
@@ -167,7 +162,7 @@ int main(int argc, char* argv[] ) {
         return -1;
     }
     
-    // Main thread handles user input
+    // Main thread
     printf("You can now start chatting:\n");
     printf("Commands:\n");
     printf("  /startchat - Switch to chat mode\n");
@@ -192,19 +187,13 @@ int main(int argc, char* argv[] ) {
     while (1) {
         c = getchar();
         
-        if (c == '\n' || c == '\r') {  // Enter pressed
+        if (c == '\n' || c == '\r') { 
             pthread_mutex_lock(&screen_mutex);
             clear_current_line();
-            
-            // Make a copy of the input buffer
             char temp_buffer[INPUT_MAX];
             strcpy(temp_buffer, input_buffer);
-            
-            // Clear input buffer
             memset(input_buffer, 0, INPUT_MAX);
             input_pos = 0;
-            
-            // Only send non-empty messages
             if (strlen(temp_buffer) > 0) {
                 // Check for mode switch commands
                 if (strcmp(temp_buffer, "/startchat") == 0) {
@@ -244,7 +233,7 @@ int main(int argc, char* argv[] ) {
             display_input_prompt();
             pthread_mutex_unlock(&screen_mutex);
         }
-        else if (c == 127 || c == 8) {  // Backspace
+        else if (c == 127 || c == 8) { 
             if (input_pos > 0) {
                 pthread_mutex_lock(&screen_mutex);
                 input_buffer[--input_pos] = '\0';
@@ -253,7 +242,7 @@ int main(int argc, char* argv[] ) {
                 pthread_mutex_unlock(&screen_mutex);
             }
         }
-        else if (c >= 32 && c < 127 && input_pos < INPUT_MAX - 1) {  // Printable character
+        else if (c >= 32 && c < 127 && input_pos < INPUT_MAX - 1) {
             pthread_mutex_lock(&screen_mutex);
             input_buffer[input_pos++] = c;
             input_buffer[input_pos] = '\0';

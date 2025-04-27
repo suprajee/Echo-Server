@@ -18,7 +18,6 @@
 
 using namespace std;
 
-// Global variables
 sem_t client_semaphore;               // Semaphore to limit concurrent clients
 pthread_mutex_t log_mutex;           // Mutex for thread-safe logging
 pthread_mutex_t name_mutex;          // Mutex for name access
@@ -32,32 +31,27 @@ pthread_cond_t queue_cond;           // Condition variable for queue
 // Structure to store client information
 typedef struct {
     int socket;
-    char mode;  // 'e' for echo, 'c' for chat
+    char mode;  // 'e' -> echo, 'c' -> chat
 } ClientInfo;
 
-ClientInfo clients[MAX_CLIENTS];     // Array to store client information
-int client_count = 0;                // Number of connected clients
+ClientInfo clients[MAX_CLIENTS];     
+int client_count = 0; 
 
 // Chat-specific variables
 map<int, string> client_names;           // socket -> name
 map<string, int> name_to_socket;         // name -> socket
 map<int, int> chatting_with;             // socket -> socket
 
-// Helper function to ensure message ends with exactly one newline
+//Function to ensure message ends with exactly one newline
 string formatMessage(const string& msg) {
     string result = msg;
-    
-    // Remove all trailing whitespace including newlines
     while (!result.empty() && (result.back() == '\n' || result.back() == '\r' || result.back() == ' ' || result.back() == '\t')) {
         result.pop_back();
     }
-    
-    // Add exactly one newline
     result += '\n';
     return result;
 }
 
-// Logging function
 void log_event(const char* msg) {
     pthread_mutex_lock(&log_mutex);
     FILE* log_file = fopen("server_log.txt", "a");
@@ -117,7 +111,7 @@ void remove_client(int socket) {
     pthread_mutex_unlock(&clients_mutex);
 }
 
-// Send a formatted message to a client
+// Send a message to a client
 void send_message(int socket, const string& message) {
     string formatted = formatMessage(message);
     send(socket, formatted.c_str(), formatted.length(), 0);
@@ -139,7 +133,7 @@ void handle_client(int client_socket) {
     string client_name = "Unknown";
     bool name_set = false;
 
-    // First, get the client's name
+    // Get the client's name
     while (!name_set) {
         bytes_read = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
         if (bytes_read <= 0) {
@@ -162,10 +156,7 @@ void handle_client(int client_socket) {
         send_message(client_socket, "Name already exists. Please Try another ");
     }
     
-    // Add client to the clients array
     add_client(client_socket);
-    
-    // Send welcome message
     send_message(client_socket, "Welcome to the server!");
     send_message(client_socket, "Type '/startchat' to enter chat mode or '/startecho' to enter echo mode");
 
@@ -184,7 +175,6 @@ void handle_client(int client_socket) {
         if (bytes_read <= 0) break;
 
         buffer[bytes_read] = '\0';
-        // Remove trailing whitespace
         string msg(buffer);
         msg.erase(msg.find_last_not_of(" \n\r\t") + 1);
 
@@ -200,7 +190,7 @@ void handle_client(int client_socket) {
         pthread_mutex_unlock(&clients_mutex);
 
         if (mode == 'e') {
-            // Echo mode - handle commands and echo back the message
+            // Echo mode
             if (msg == "/list") {
                 pthread_mutex_lock(&name_mutex);
                 string user_list = "Connected users:";
@@ -247,9 +237,7 @@ void handle_client(int client_socket) {
                 pthread_mutex_unlock(&clients_mutex);
                 send_message(client_socket, "Switched to echo mode.");
             } else {
-                // Regular echo mode - just echo back the message
                 send(client_socket, buffer, bytes_read, 0);
-                
                 // Log and print message
                 char log_msg[BUFFER_SIZE + 50];
                 snprintf(log_msg, sizeof(log_msg), "Client '%s' (echo mode): %s", client_name.c_str(), buffer);
@@ -257,7 +245,7 @@ void handle_client(int client_socket) {
                 printf("Echo from client '%s': %s", client_name.c_str(), buffer);
             }
         } else {
-            // Chat mode - handle chat commands
+            // Chat mode
             pthread_mutex_lock(&name_mutex);
             if (chatting_with.count(client_socket)) {
                 int peer = chatting_with[client_socket];
@@ -272,7 +260,6 @@ void handle_client(int client_socket) {
                     send_message(client_socket, "Chat ended.");
                     send_message(peer, client_name + " has left the chat.");
                 } else if (msg == "/startecho") {
-                    // If in a chat, end it first
                     pthread_mutex_lock(&name_mutex);
                     chatting_with.erase(client_socket);
                     chatting_with.erase(peer);
@@ -384,13 +371,12 @@ void handle_client(int client_socket) {
                     send_message(client_socket, help_text);
                 } else if (msg == "/startecho") {
                     if (chatting_with.count(client_socket)) {
-                    // End current chat first
-                    int peer = chatting_with[client_socket];
-                    chatting_with.erase(client_socket);
-                    chatting_with.erase(peer);
-                    
-                    send_message(client_socket, "Chat ended.");
-                    send_message(peer, client_name + " has left the chat.");
+                        int peer = chatting_with[client_socket];
+                        chatting_with.erase(client_socket);
+                        chatting_with.erase(peer);
+                        
+                        send_message(client_socket, "Chat ended.");
+                        send_message(peer, client_name + " has left the chat.");
                     }
                     pthread_mutex_lock(&clients_mutex);
                     for (int i = 0; i < client_count; i++) {
@@ -407,8 +393,7 @@ void handle_client(int client_socket) {
             }
         }
     }
-
-    // Clean up when client disconnects
+    // Client disconnected
     pthread_mutex_lock(&name_mutex);
     if (chatting_with.count(client_socket)) {
         int peer = chatting_with[client_socket];
@@ -427,11 +412,11 @@ void handle_client(int client_socket) {
     close(client_socket);
 }
 
-// Thread function for thread pool
+// Function to manage thread pool
 void* thread_function(void* arg) {
     while (1) {
         int client_socket = dequeue_client();
-        sem_wait(&client_semaphore); // Limit concurrent clients
+        sem_wait(&client_semaphore);
         handle_client(client_socket);
         sem_post(&client_semaphore);
     }
@@ -493,7 +478,7 @@ int main() {
         enqueue_client(client_socket);
     }
 
-    // Cleanup (not reachable in this infinite server loop)
+    // Cleanup 
     close(server_fd);
     sem_destroy(&client_semaphore);
     pthread_mutex_destroy(&queue_mutex);
